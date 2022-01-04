@@ -4,7 +4,7 @@ def load_data(nrows=None):
     """
     Loads the recipes and ingredients dataframes from CSV files.
     """
-    return (pd.read_csv("recipes.csv", nrows=nrows), pd.read_csv("ingredients.csv"))
+    return (pd.read_csv("data/recipes.csv", nrows=nrows), pd.read_csv("data/ingredients.csv"))
 
 def recipe_to_string(ingredients_list, instructions):
     ingredients_string = '\n'.join(ingredients_list)
