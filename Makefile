@@ -61,7 +61,7 @@ PROJECT_ID=le-wagon-779
 BUCKET_NAME=wagon-data-779-createur_de_recette
 
 # choose your region from https://cloud.google.com/storage/docs/locations#available_locations
-REGION=europe-west1
+REGION=europe-west2
 
 set_project:
 	@gcloud config set project ${PROJECT_ID}

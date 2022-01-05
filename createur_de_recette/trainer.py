@@ -15,6 +15,8 @@ STORAGE_LOCATION = 'models/'
 N_ROWS = 100             # Number of rows. None for the full dataset
 STOP_SIGN = '␣'          # Used for padding
 MAX_RECIPE_LENGTH = 1000 # For padding
+EMBEDDING_DIM = 256
+RNN_UNITS = 1024
 BATCH_SIZE = 64
 SHUFFLE_BUFFER_SIZE = 1000
 EPOCHS = 500
@@ -22,7 +24,7 @@ INITIAL_EPOCH = 1
 STEPS_PER_EPOCH = 1500
 
 class Trainer:
-    def __init__(self):
+    def __init__(self, on_gcp=False):
         self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
             char_level=True,
             filters='',
@@ -30,11 +32,13 @@ class Trainer:
             split=''
         )
         self.vocabulary_size = 0
+        self.on_gcp = on_gcp
+        self.dataset_train = None
+        self.dataset_filtered = None
         
     def load_data(self, nrows=None):
-        prefix = ""
-        prefix = f"gs://{BUCKET_NAME}/" # Comment if not on GCP
-        return pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
+        prefix = f"gs://{BUCKET_NAME}/" if self.on_gcp else ""
+        self.dataset_filtered = pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
         
 
     def recipe_sequence_to_string(self, recipe_sequence):
@@ -46,23 +50,25 @@ class Trainer:
         target_text = recipe[1:]
         return input_text, target_text
 
-    def build_model(self, vocab_size, embedding_dim, rnn_units, batch_size):
+    def build_model(self, batch_size=BATCH_SIZE):
+        if self.dataset_train is None:
+            print("Data not tokenized. Call tokenize() first")
         model = tf.keras.models.Sequential()
 
         model.add(tf.keras.layers.Embedding(
-            input_dim=vocab_size,
-            output_dim=embedding_dim,
+            input_dim=self.vocabulary_size,
+            output_dim=EMBEDDING_DIM,
             batch_input_shape=[batch_size, None]
         ))
 
         model.add(tf.keras.layers.LSTM(
-            units=rnn_units,
+            units=RNN_UNITS,
             return_sequences=True,
             stateful=True,
             recurrent_initializer=tf.keras.initializers.GlorotNormal()
         ))
 
-        model.add(tf.keras.layers.Dense(vocab_size))
+        model.add(tf.keras.layers.Dense(self.vocabulary_size))
         
         return model
 
@@ -75,12 +81,13 @@ class Trainer:
         
         return entropy
     
-
-    def get_model(self, dataset_filtered):
+    def tokenize(self):
+        if self.dataset_filtered is None:
+            print("Data not loaded. Call load_data() first")
         self.tokenizer.fit_on_texts([STOP_SIGN])
-        self.tokenizer.fit_on_texts(dataset_filtered)
+        self.tokenizer.fit_on_texts(self.dataset_filtered)
         self.vocabulary_size = len(self.tokenizer.word_counts) + 1
-        dataset_vectorized = self.tokenizer.texts_to_sequences(dataset_filtered)
+        dataset_vectorized = self.tokenizer.texts_to_sequences(self.dataset_filtered)
         
         dataset_vectorized_padded_without_stops = tf.keras.preprocessing.sequence.pad_sequences(
             dataset_vectorized,
@@ -104,16 +111,16 @@ class Trainer:
         
         dataset = tf.data.Dataset.from_tensor_slices(dataset_vectorized_padded)
         dataset_targeted = dataset.map(self.split_input_target)
-        dataset_train = dataset_targeted.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True).repeat()
+        self.dataset_train = dataset_targeted.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True).repeat()
         
-        model = self.build_model(
-            vocab_size=self.vocabulary_size,
-            embedding_dim=256,
-            rnn_units=1024,
-            batch_size=BATCH_SIZE
-        )
+    
+
+    def get_model(self):
+        if self.dataset_train is None:
+            print("Data not tokenized. Call tokenize() first")
+        model = self.build_model(BATCH_SIZE)
         
-        for input_example_batch, target_example_batch in dataset_train.take(1):
+        for input_example_batch, target_example_batch in self.dataset_train.take(1):
             example_batch_predictions = model(input_example_batch)
             
         sampled_indices = tf.random.categorical(
@@ -149,8 +156,10 @@ class Trainer:
             save_weights_only=True
         )
         
+        model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+        
         history = model.fit(
-            x=dataset_train,
+            x=self.dataset_train,
             epochs=EPOCHS,
             steps_per_epoch=STEPS_PER_EPOCH,
             initial_epoch=INITIAL_EPOCH,
@@ -166,7 +175,7 @@ class Trainer:
         
         simplified_batch_size = 1
 
-        model_simplified = self.build_model(self.vocabulary_size, 256, 1024, simplified_batch_size)
+        model_simplified = self.build_model(simplified_batch_size)
         model_simplified.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
         model_simplified.build(tf.TensorShape([simplified_batch_size, None]))
 
@@ -206,10 +215,8 @@ class Trainer:
 
         return (padded_start_string + ''.join(text_generated))
 
-    def generate_combinations(self, model):
+    def generate_combinations(self, model, try_letters, try_temperature):
         recipe_length = 1000
-        try_letters = ['🥕', 'Pomme', 'Manger', 'Plat', 'Le', 'Banane']
-        try_temperature = [1.0, 0.8, 0.4, 0.2]
 
         for letter in try_letters:
             for temperature in try_temperature:
@@ -230,7 +237,7 @@ class Trainer:
         file_name = f"model.jolib"
         joblib.dump(reg, file_name)
         print("saved model.joblib locally")
-        upload_model_to_gcp()
+        upload_model_to_gcp(file_name)
         print(f"uploaded model.joblib to gcp cloud storage under \n => {STORAGE_LOCATION}")
 
 
@@ -242,8 +249,9 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    lstm = Trainer()
-    dataset_filtered = lstm.load_data()
-    model = lstm.get_model(dataset_filtered)
-    save_model(model)
-    lstm.generate_combinations(model)
+    trainer = Trainer(on_gcp=False)
+    trainer.load_data()
+    trainer.tokenize()
+    trainer.get_model()
+    #save_model(model)
+    trainer.generate_combinations(model, ['🥕', 'Pomme', 'Manger', 'Plat', 'Le', 'Banane'], [1.0, 0.8, 0.4, 0.2])
