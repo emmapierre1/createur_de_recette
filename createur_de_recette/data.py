@@ -1,10 +1,13 @@
 import pandas as pd
-
+#from gcp_params import *
+    
 def load_data(nrows=None):
     """
     Loads the recipes and ingredients dataframes from CSV files.
     """
-    return (pd.read_csv("data/recipes.csv", nrows=nrows), pd.read_csv("data/ingredients.csv"))
+    prefix = ""
+    #prefix = f"gs://{BUCKET_NAME}/" # Comment if not on GCP
+    return (pd.read_csv(prefix + "data/recipes.csv", nrows=nrows), pd.read_csv(prefix + "data/ingredients.csv"))
 
 def recipe_to_string(ingredients_list, instructions):
     ingredients_string = '\n'.join(ingredients_list)
@@ -29,4 +32,4 @@ def clean_data(df):
     pass
 
 if __name__ == '__main__':
-    pass
+    pd.DataFrame(get_recipes_string_list()).to_csv("data/train_data.csv", index=False, header=False)

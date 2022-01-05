@@ -1,9 +1,16 @@
 import tensorflow as tf
 import numpy as np
+import pandas as pd
+import joblib
+from google.cloud import storage
 
 import os
 
 
+BUCKET_NAME = "wagon-data-779-createur_de_recette"
+BUCKET_DATA_PATH="data/train_data.csv"
+MODEL_VERSION = 'v1'
+STORAGE_LOCATION = 'models/'
 
 N_ROWS = 100             # Number of rows. None for the full dataset
 STOP_SIGN = '␣'          # Used for padding
@@ -23,6 +30,12 @@ class Trainer:
             split=''
         )
         self.vocabulary_size = 0
+        
+    def load_data(self, nrows=None):
+        prefix = ""
+        prefix = f"gs://{BUCKET_NAME}/" # Comment if not on GCP
+        return pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
+        
 
     def recipe_sequence_to_string(self, recipe_sequence):
         recipe_stringified = self.tokenizer.sequences_to_texts([recipe_sequence])[0]
@@ -210,3 +223,27 @@ class Trainer:
                 print('-----------------------------------')
                 print(generated_text)
                 print('\n\n')
+                
+    def save_model(self, reg):
+        """method that saves the model into a .joblib file and uploads it on Google Storage /models folder
+        HINTS : use joblib library and google-cloud-storage"""
+        file_name = f"model.jolib"
+        joblib.dump(reg, file_name)
+        print("saved model.joblib locally")
+        upload_model_to_gcp()
+        print(f"uploaded model.joblib to gcp cloud storage under \n => {STORAGE_LOCATION}")
+
+
+    def upload_model_to_gcp(self, file_name):
+        client = storage.Client()
+        bucket = client.bucket(BUCKET_NAME)
+        blob = bucket.blob(STORAGE_LOCATION + file_name)
+        blob.upload_from_filename(file_name)
+
+
+if __name__ == "__main__":
+    lstm = Trainer()
+    dataset_filtered = lstm.load_data()
+    model = lstm.get_model(dataset_filtered)
+    save_model(model)
+    lstm.generate_combinations(model)
