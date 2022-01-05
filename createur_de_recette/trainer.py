@@ -10,9 +10,9 @@ STOP_SIGN = '␣'          # Used for padding
 MAX_RECIPE_LENGTH = 1000 # For padding
 BATCH_SIZE = 64
 SHUFFLE_BUFFER_SIZE = 1000
-EPOCHS = 2 #500
+EPOCHS = 500
 INITIAL_EPOCH = 1
-STEPS_PER_EPOCH = 1 #150
+STEPS_PER_EPOCH = 1500
 
 class Trainer:
     def __init__(self):
