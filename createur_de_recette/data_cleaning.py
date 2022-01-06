@@ -63,8 +63,15 @@ def recipe_df_cleaning(recipes_df) :
     """
     recipes_df.drop_duplicates(inplace=True)
     recipes_df = recipes_df.reset_index().drop(columns='index')
+
+    # Drop recipes whose lengths are inferior to 20
+    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(lambda x : x if len(x) >20 else 'ThisShoulDBeDroPPped')
+    recipes_df = drop_rows(recipes_df, recipes_df[recipes_df.recipe_steps=='ThisShoulDBeDroPPped'].index)
     # Enlever les '- ' avec un chiffre derrière éventuellement
     recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n) *(\*|-|•|~)+ *\d* *', value = '\g<1>', regex = True)
+
+    # Regex Dangereux testé uniquement sur Regex101
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n)\d* *(\*|-|•|~|\/|\))+ *\d* *', value = '', regex = True)
 
     # Replace '(digit)' per an empty string
     recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='\(\d{1,2}\)', value = '', regex = True)
@@ -181,14 +188,14 @@ def capitalize_steps(df):
     return df
 
 def capitalize_steps_loop(steps_list):
-    return "\n\n".join([step.capitalize() for step in steps_list])
+    return "\n\n".join([step[0].upper()+step[1:] for step in steps_list if step != ''])
 
 def dot_at_the_end_of_string(steps_list):
     modified_steps_list = []
     for step in steps_list:
         stepper = step.strip()
         if stepper != '' :
-            if stepper[-1] in  ['.', '!', '?', ':']:
+            if stepper[-1] in  ['.', '!', '?', ':', ';', ',']:
                 modified_steps_list.append(stepper)
             else :
                 modified_steps_list.append(stepper+'.')
