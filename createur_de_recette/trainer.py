@@ -5,6 +5,7 @@ import joblib
 from google.cloud import storage
 
 import os
+from sys import argv
 
 
 BUCKET_NAME = "wagon-data-779-createur_de_recette"
@@ -12,6 +13,7 @@ BUCKET_DATA_PATH="data/train_data.csv"
 MODEL_VERSION = 'v1'
 STORAGE_LOCATION = 'models/'
 
+CHECKPOINT_DIR = 'checkpoints'
 N_ROWS = 100             # Number of rows. None for the full dataset
 STOP_SIGN = '␣'          # Used for padding
 MAX_RECIPE_LENGTH = 1000 # For padding
@@ -35,8 +37,42 @@ class Trainer:
         self.on_gcp = on_gcp
         self.dataset_train = None
         self.dataset_filtered = None
+    
+    def train(self):
+        """
+        Creates and trains the model.
+        If checkpoint files are found, the weights are loaded from them.
+        Before calling this function, make sure the files data/train_data.csv and the checkpoints files if needed are present.
+        """
+        self.load_data()
+        self.tokenize()
+        self.get_model()
+    
+    def test(self,
+             try_letters=['🥕\n\n100 g de viande hachée\n200 g de tomates\n\n500 g de spaghettis\n 1 kg de piment\n\n📝\n\n', '🥕\n\nSel\nPoivre\n\n📝\n\n'],
+             try_temperature=[1.0, 0.8, 0.4, 0.2]):
+        """
+        Creates a model from checkpoint files, tries it with different try_letters and try_temperature and displays the results
+        Before calling this function, make sure the files data/train_data.csv and the checkpoints files are present.
+        """
+        simplified_batch_size = 1
+        self.load_data()
+        self.tokenize()
+        model_simplified = self.build_model(simplified_batch_size)
+        checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
+        if checkpoint:
+            print("Restore from " + checkpoint)
+            model_simplified.load_weights(checkpoint)
+        else:
+            print("No checkpoint found. Checkpoint files are needed to test the model.")
+            return
+        model_simplified.build(tf.TensorShape([simplified_batch_size, None]))
+        
+        self.generate_combinations(model_simplified, try_letters, try_temperature)
+
         
     def load_data(self, nrows=None):
+        print("Loading data")
         prefix = f"gs://{BUCKET_NAME}/" if self.on_gcp else ""
         self.dataset_filtered = pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
         
@@ -53,6 +89,7 @@ class Trainer:
     def build_model(self, batch_size=BATCH_SIZE):
         if self.dataset_train is None:
             print("Data not tokenized. Call tokenize() first")
+        print("Creating model")
         model = tf.keras.models.Sequential()
 
         model.add(tf.keras.layers.Embedding(
@@ -84,6 +121,7 @@ class Trainer:
     def tokenize(self):
         if self.dataset_filtered is None:
             print("Data not loaded. Call load_data() first")
+        print("Tokenizing")
         self.tokenizer.fit_on_texts([STOP_SIGN])
         self.tokenizer.fit_on_texts(self.dataset_filtered)
         self.vocabulary_size = len(self.tokenizer.word_counts) + 1
@@ -120,6 +158,7 @@ class Trainer:
             print("Data not tokenized. Call tokenize() first")
         model = self.build_model(BATCH_SIZE)
         
+        """ TODO remove
         for input_example_batch, target_example_batch in self.dataset_train.take(1):
             example_batch_predictions = model(input_example_batch)
             
@@ -132,6 +171,7 @@ class Trainer:
             input=sampled_indices,
             axis=-1
         ).numpy()
+        """
         
         adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         
@@ -147,16 +187,21 @@ class Trainer:
             verbose=1
         )
         
-        checkpoint_dir = 'tmp/checkpoints'
-        os.makedirs(checkpoint_dir, exist_ok=True)
+        
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-        checkpoint_prefix = os.path.join(checkpoint_dir, 'ckpt_{epoch}')
+        checkpoint_prefix = os.path.join(CHECKPOINT_DIR, 'ckpt_{epoch}')
         checkpoint_callback=tf.keras.callbacks.ModelCheckpoint(
             filepath=checkpoint_prefix,
             save_weights_only=True
         )
         
-        model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+        checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
+        if checkpoint:
+            print("Restore from " + checkpoint)
+            model.load_weights(checkpoint)
+        else:
+            print("No checkpoint found")
         
         history = model.fit(
             x=self.dataset_train,
@@ -172,14 +217,6 @@ class Trainer:
         # Saving the trained model to file (to be able to re-use it later).
         model_name = 'recipe_generation_rnn_raw.h5'
         model.save(model_name, save_format='h5')
-        
-        simplified_batch_size = 1
-
-        model_simplified = self.build_model(simplified_batch_size)
-        model_simplified.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
-        model_simplified.build(tf.TensorShape([simplified_batch_size, None]))
-
-        return model_simplified
 
     def generate_text(self, model, start_string, num_generate = 1000, temperature=1.0):
         # Evaluation step (generating text using the learned model)
@@ -249,9 +286,8 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    trainer = Trainer(on_gcp=False)
-    trainer.load_data()
-    trainer.tokenize()
-    trainer.get_model()
-    #save_model(model)
-    trainer.generate_combinations(model, ['🥕', 'Pomme', 'Manger', 'Plat', 'Le', 'Banane'], [1.0, 0.8, 0.4, 0.2])
+    action = argv[1]
+    if action=='train':
+        Trainer().train()
+    elif action=='test':
+        Trainer().test()
