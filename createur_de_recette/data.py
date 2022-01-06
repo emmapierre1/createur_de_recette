@@ -1,5 +1,5 @@
 import pandas as pd
-#from gcp_params import *
+from data_cleaning import recipe_df_cleaning, ingredients_df_cleaning
     
 def load_data(nrows=None):
     """
@@ -20,6 +20,8 @@ def get_recipes_string_list(nrows=None):
     ingredients_df can be the full ingredients dataset. It will be filtered according to recipe_df.
     """
     recipes_df, ingredients_df = load_data(nrows)
+    recipes_df = recipe_df_cleaning(recipes_df)
+    ingredients_df = ingredients_df_cleaning(ingredients_df)
     ingredients_list_df = pd.DataFrame(ingredients_df.groupby('recipe_id')['ingredient'].apply(list)).reset_index().rename(columns={'ingredient':'ingredients_list'})
     return recipes_df.merge(ingredients_list_df, how='inner').apply(lambda x: recipe_to_string(x['ingredients_list'], x['recipe_steps']), axis=1)
 
