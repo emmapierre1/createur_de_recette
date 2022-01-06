@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import pickle
 import joblib
 from google.cloud import storage
 
@@ -14,6 +15,7 @@ MODEL_VERSION = 'v1'
 STORAGE_LOCATION = 'models/'
 
 CHECKPOINT_DIR = 'checkpoints'
+TOKENIZER_FILE = 'data/tokenizer.pickle'
 N_ROWS = 100             # Number of rows. None for the full dataset
 STOP_SIGN = '␣'          # Used for padding
 MAX_RECIPE_LENGTH = 1000 # For padding
@@ -27,12 +29,7 @@ STEPS_PER_EPOCH = 1500
 
 class Trainer:
     def __init__(self, on_gcp=False):
-        self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
-            char_level=True,
-            filters='',
-            lower=False,
-            split=''
-        )
+        self.tokenizer = None
         self.vocabulary_size = 0
         self.on_gcp = on_gcp
         self.dataset_train = None
@@ -53,11 +50,16 @@ class Trainer:
              try_temperature=[1.0, 0.8, 0.4, 0.2]):
         """
         Creates a model from checkpoint files, tries it with different try_letters and try_temperature and displays the results
-        Before calling this function, make sure the files data/train_data.csv and the checkpoints files are present.
+        Before calling this function, make sure the files data/tokenizer.pickle or data/train_data.csv and the checkpoints files are present.
         """
+        
+        self.load_tokenizer()
+        if(self.tokenizer is None):
+            self.load_data()
+            self.tokenize()
+        
+        
         simplified_batch_size = 1
-        self.load_data()
-        self.tokenize()
         model_simplified = self.build_model(simplified_batch_size)
         checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
         if checkpoint:
@@ -75,6 +77,18 @@ class Trainer:
         print("Loading data")
         prefix = f"gs://{BUCKET_NAME}/" if self.on_gcp else ""
         self.dataset_filtered = pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
+    
+    def load_tokenizer(self):
+        print("Load tokenizer")
+        if self.tokenizer is None:
+            try:
+                with open(TOKENIZER_FILE, 'rb') as handle:
+                    print("Load tokenizer file")
+                    self.tokenizer = pickle.load(handle)
+                    self.vocabulary_size = len(self.tokenizer.word_counts) + 1
+            except FileNotFoundError:
+                print("No tokenizer file found")
+        
         
 
     def recipe_sequence_to_string(self, recipe_sequence):
@@ -87,8 +101,6 @@ class Trainer:
         return input_text, target_text
 
     def build_model(self, batch_size=BATCH_SIZE):
-        if self.dataset_train is None:
-            print("Data not tokenized. Call tokenize() first")
         print("Creating model")
         model = tf.keras.models.Sequential()
 
@@ -118,10 +130,20 @@ class Trainer:
         
         return entropy
     
+    
     def tokenize(self):
         if self.dataset_filtered is None:
             print("Data not loaded. Call load_data() first")
         print("Tokenizing")
+        if self.tokenizer is None:
+            print("Create a new tokenizer")
+            self.tokenizer = tf.keras.preprocessing.text.Tokenizer(
+                char_level=True,
+                filters='',
+                lower=False,
+                split=''
+            )
+            
         self.tokenizer.fit_on_texts([STOP_SIGN])
         self.tokenizer.fit_on_texts(self.dataset_filtered)
         self.vocabulary_size = len(self.tokenizer.word_counts) + 1
@@ -151,27 +173,16 @@ class Trainer:
         dataset_targeted = dataset.map(self.split_input_target)
         self.dataset_train = dataset_targeted.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True).repeat()
         
+        print("Saving tokenizer")
+        with open(TOKENIZER_FILE, 'wb') as handle:
+            pickle.dump(self.tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        
     
 
     def get_model(self):
-        if self.dataset_train is None:
+        if self.dataset_train is None or self.tokenizer is None:
             print("Data not tokenized. Call tokenize() first")
         model = self.build_model(BATCH_SIZE)
-        
-        """ TODO remove
-        for input_example_batch, target_example_batch in self.dataset_train.take(1):
-            example_batch_predictions = model(input_example_batch)
-            
-        sampled_indices = tf.random.categorical(
-            logits=example_batch_predictions[0],
-            num_samples=1
-        )
-
-        sampled_indices = tf.squeeze(
-            input=sampled_indices,
-            axis=-1
-        ).numpy()
-        """
         
         adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
         
