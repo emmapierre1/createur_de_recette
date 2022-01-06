@@ -266,18 +266,24 @@ class Trainer:
     def generate_combinations(self, model, try_letters, try_temperature):
         recipe_length = 1000
 
+        sizes = []
         for letter in try_letters:
+            letter_sizes = []
             for temperature in try_temperature:
                 generated_text = self.generate_text(
                     model,
                     start_string=letter,
                     num_generate = recipe_length,
                     temperature=temperature
-                )
-                print(f'Attempt: "{letter}" + {temperature}')
+                ).strip(STOP_SIGN)
+                print(f'Attempt: {temperature}')
                 print('-----------------------------------')
                 print(generated_text)
                 print('\n\n')
+                letter_sizes.append(len(generated_text))
+            sizes.append(letter_sizes)
+        print(sizes)
+        
                 
     def save_model(self, reg):
         """method that saves the model into a .joblib file and uploads it on Google Storage /models folder
