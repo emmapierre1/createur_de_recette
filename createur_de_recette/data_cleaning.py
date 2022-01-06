@@ -8,7 +8,8 @@ STR_TO_REPLACE_BY_SINGLE_OCCURENCES = ['!', '.', ' ', '-']
 REPLACE_IF_SEQUENCE_IN_IT = [';-)', '~', '""']
 
 
-
+# preprocessing won't add a dot at the end of recipe's step if the string end by this character.
+ACCEPTED_END_OF_STRING_CHAR = ['.', '!', '?', ':']
 #Description.
 # Module permettant de réaliser les fonctionnalités suivantes :
 
@@ -101,7 +102,9 @@ def recipe_df_cleaning(recipes_df) :
 
 
     # dropping useless columns
-    # recipes_df.drop(columns='first_letter', inplace=True)
+    recipes_df.drop(columns='first_letter', inplace=True)
+
+    recipes_df.to_csv('./data/clean_recipes.csv', index=False, header=True)
 
     return recipes_df
 
@@ -168,9 +171,26 @@ def resample_ingredients(ingredients_df,min_ingredient=2, max_ingredient=10):
 
 def capitalize_steps(df):
     """return the recipes's DataFrame with capitalized steps"""
+
     df.recipe_steps = df.recipe_steps.apply(lambda x : x.split("\n\n"))
     df.recipe_steps = df.recipe_steps.apply(capitalize_steps_loop)
+    print(list(df.recipe_steps))
+    df.recipe_steps = df.recipe_steps.apply(lambda x : x.split("\n\n"))
+    # df.recipe_steps = df.recipe_steps.apply(lambda x : x.strip())
+    df.recipe_steps = df.recipe_steps.apply(dot_at_the_end_of_string)
+
     return df
 
 def capitalize_steps_loop(steps_list):
     return "\n\n".join([step.capitalize() for step in steps_list])
+
+def dot_at_the_end_of_string(steps_list):
+    modified_steps_list = []
+    for step in steps_list:
+        stepper = step.strip()
+        if stepper != '' :
+            if stepper[-1] in  ['.', '!', '?']:
+                modified_steps_list.append(stepper)
+            else :
+                modified_steps_list.append(stepper+'.')
+    return "\n\n".join(modified_steps_list)
