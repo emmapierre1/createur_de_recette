@@ -1,11 +1,13 @@
 import pandas as pd
 
 DELETE_ROW_IF_FIRST_CHAR=[':','`', '¨', '➢', "'", '[', '°', '_', '>', '.', '•', '"'] # '.' '_' and '•' pourraît être enlever pas une fonction qui supprime les puces
-DROP_IF_SEQUENCE_IN_IT = ['http']
+DROP_IF_SEQUENCE_IN_IT = ['http', '\t', ':p', '\n:', ':o', ':D', ':-', 'Oo', 'A/', 'A)', '.!', '.?', '?.', '!.', 'I)', '. . .', '2ème étape', '1ère étape', 'étape 1', ',\n\n'] # check regex for \n\n2 , '\n\n2'
+INDIVIDUALS_RECIPE_ID_TO_DROP = [55088, 14288, 168384, 382724, 383586, 11034, 24993, 323345, 28567, 165862, 25067, 94668, 48295, 52925]
+
 
 REPLACE_IF_FIRST_CHAR = [' ', '\n']
 STR_TO_REPLACE_BY_SINGLE_OCCURENCES = ['!', '.', ' ', '-']
-REPLACE_IF_SEQUENCE_IN_IT = [';-)', '~', '""']
+REPLACE_IF_SEQUENCE_IN_IT = [';-)', '~', '""', ':)', ';)', ':-)', '^^']
 
 
 # preprocessing won't add a dot at the end of recipe's step if the string end by this character.
@@ -60,18 +62,35 @@ def recipe_df_cleaning(recipes_df) :
 
         - multiples !!! ... and spaces '    '
 
+
     """
+    recipes_df = replace_sequences_in_column(recipes_df, ['—', '–'], '-')
+    recipes_df = replace_sequences_in_column(recipes_df, [' .', '…'], '.')
     recipes_df.drop_duplicates(inplace=True)
     recipes_df = recipes_df.reset_index().drop(columns='index')
 
+
     # Drop recipes whose lengths are inferior to 20
-    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(lambda x : x if len(x) >20 else 'ThisShoulDBeDroPPped')
+    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(lambda x : x if len(x) >40 else 'ThisShoulDBeDroPPped')
     recipes_df = drop_rows(recipes_df, recipes_df[recipes_df.recipe_steps=='ThisShoulDBeDroPPped'].index)
+
+    # Deleting problematics rows individually from recipes_df in INDIVIDUALS_RECIPE_ID_TO_DROP
+    # recipes_df = recipes_df[recipes_df.recipe_steps.apply(lambda x : \
+    #     x.find("Faire fondre le chocolat et le yaourt au micro-ondes, c\'est plus rapide.\n\nQuand c\'est fondu, ajouter l\'oeuf et le sucre, mélanger.")) == -1]
+    # recipes_df = recipes_df[recipes_df.recipe_id != 55088]
+    for recipe_id in INDIVIDUALS_RECIPE_ID_TO_DROP:
+        recipes_df = recipes_df[recipes_df.recipe_id != recipe_id]
+
+
     # Enlever les '- ' avec un chiffre derrière éventuellement
     recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n) *(\*|-|•|~)+ *\d* *', value = '\g<1>', regex = True)
 
     # Regex Dangereux testé uniquement sur Regex101
-    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n)\d* *(\*|-|•|~|\/|\))+ *\d* *', value = '', regex = True)
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n)\d* *(\*|-|\.|•|~|\/|\))+ *\d* *', value = '\g<1>', regex = True)
+
+    # looking for 2) 8) ...
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(\\n\\n)\d\)', value = '\g<1>', regex = True)
+    # recipes_df = manage_regex_changes(recipes_df)
 
     # Replace '(digit)' per an empty string
     recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='\(\d{1,2}\)', value = '', regex = True)
@@ -103,9 +122,15 @@ def recipe_df_cleaning(recipes_df) :
 
     # Replace sequences in REPLACE_IF_SEQUENCE_IN_IT by empty string or choosen string
     recipes_df = replace_sequences_in_column(recipes_df, REPLACE_IF_SEQUENCE_IN_IT, '')
+    recipes_df = replace_sequences_in_column(recipes_df, [' .'], '.')
+
 
     # Apply capitalize to each steps of the recipe_steps columns
     recipes_df = capitalize_steps(recipes_df)
+
+    # resolving the ',\n\n issue'
+    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(lambda x : x.split("\n\n"))
+    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(resolving_capital_after_commas_issues)
 
 
     # dropping useless columns
@@ -113,6 +138,19 @@ def recipe_df_cleaning(recipes_df) :
 
     recipes_df.to_csv('./data/clean_recipes.csv', index=False, header=True)
 
+
+
+    ## Individual treatment of characters who didn't got treated properly by functions, e.g. '  ' some double spaces
+    recipes_df.recipe_steps = recipes_df.recipe_steps.apply(lambda x : x.replace('  ', ' '))
+    # replace '3/ ' by empty string but keep 1/2 litters
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n)[1-9]*(\/)+\d{0} ', value = '', regex = True)
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(^|\\n)[1-9]*(\/)+\d{0} ', value = '', regex = True)
+
+    recipes_df = drop_rows_with_character_in_it(recipes_df, [',\n\n'])
+
+
+    # recipes_df = recipes_df.reset_index().drop(columns='index')
+    recipes_df.recipe_steps = recipes_df.recipe_steps.replace(to_replace ='(\\n\\n)\d\)', value = '\g<1>', regex = True)
     return recipes_df
 
 def replace_first_char_of_string(df, chars_list=REPLACE_IF_FIRST_CHAR, iterations = 3) :
@@ -134,7 +172,7 @@ def delete_row_if_first_char_in_it(df, chars_list=DELETE_ROW_IF_FIRST_CHAR) :
     return df
 
 
-def replace_multiple_chars_by_a_single_one(df, chars_list=STR_TO_REPLACE_BY_SINGLE_OCCURENCES, iteration=30) :
+def replace_multiple_chars_by_a_single_one(df, chars_list=STR_TO_REPLACE_BY_SINGLE_OCCURENCES, iteration=35) :
     "replace multiple occurences of a char like !!!!!! by !"
     for i in range(iteration):
          for char in chars_list:
@@ -200,3 +238,37 @@ def dot_at_the_end_of_string(steps_list):
             else :
                 modified_steps_list.append(stepper+'.')
     return "\n\n".join(modified_steps_list)
+
+
+def resolving_capital_after_commas_issues(steps_list):
+    """resolving ,\n\n issues"""
+    modified_steps_list = []
+    last_step='aa'
+    for step in steps_list:
+
+        stepper = step
+        if stepper != '' :
+            if last_step[-1] in  [',', ';']:
+                modified_steps_list.append(stepper[0].lower()+stepper[1:])
+            else :
+                modified_steps_list.append(stepper)
+            if last_step != 'aa' and last_step!='' :
+                last_step = stepper
+
+    return "\n\n".join(modified_steps_list)
+
+
+
+
+
+
+
+
+
+
+
+
+
+def manage_regex_changes(df) :
+    df.recipe_steps = df.recipe_steps.replace(to_replace ='\n\n\d\)', value = '\n\n', regex = True)
+    return df
