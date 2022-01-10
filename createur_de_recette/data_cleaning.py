@@ -1,8 +1,9 @@
 import pandas as pd
+import re
 
 DELETE_ROW_IF_FIRST_CHAR=[':','`', '¨', '➢', "'", '[', '°', '_', '>', '.', '•', '"'] # '.' '_' and '•' pourraît être enlever pas une fonction qui supprime les puces
-DROP_IF_SEQUENCE_IN_IT = ['http', '\t', ':p', '\n:', ':o', ':D', ':-', 'Oo', 'A/', 'A)', '.!', '.?', '?.', '!.', 'I)', '. . .', '2ème étape', '1ère étape', 'étape 1', ',\n\n'] # check regex for \n\n2 , '\n\n2'
-INDIVIDUALS_RECIPE_ID_TO_DROP = [55088, 14288, 168384, 382724, 383586, 11034, 24993, 323345, 28567, 165862, 25067, 94668, 48295, 52925]
+DROP_IF_SEQUENCE_IN_IT = ['http', '\t', ':p', '\n:', ':o', ':D', ':-', 'Oo', 'A/', 'A)', '.!', '.?', '?.', '!.', 'I)', '. . .', '2ème étape', '1ère étape', 'étape 1', ',\n\n', '$', '`', '*', '}', '§', '?', '&', '{', '[', '|', '_', '\\', ] # check regex for \n\n2 , '\n\n2'
+INDIVIDUALS_RECIPE_ID_TO_DROP = [55088, 14288, 168384, 382724, 383586, 11034, 24993, 323345, 28567, 165862, 25067, 94668, 48295, 52925] #  '$', '`', '*' added those to drop above to optimize model's speed
 
 
 REPLACE_IF_FIRST_CHAR = [' ', '\n']
@@ -50,6 +51,19 @@ def ingredients_df_cleaning(ingredients_df) :
     ingredients_df = resample_ingredients(ingredients_df,min_ingredient=2, max_ingredient=10)
 
     ingredients_df = ingredients_df.reset_index().drop(columns='index')
+
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : re.sub(' +', ' ', x))
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : re.sub('c.à.s', '1 c.à.s', x))
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : re.sub('c.à.c', '1 c.à.c', x))
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : re.sub('\' ', '\'', x))
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : re.sub('\xa0', ' ', x))
+
+
+    ingredients_df.ingredient = ingredients_df.ingredient.apply(lambda x : x[0].upper()+x[1:])
+
+
+
+
     return ingredients_df
 
 
