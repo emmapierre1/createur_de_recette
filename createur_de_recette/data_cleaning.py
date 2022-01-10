@@ -2,8 +2,8 @@ import pandas as pd
 import re
 
 DELETE_ROW_IF_FIRST_CHAR=[':','`', '¨', '➢', "'", '[', '°', '_', '>', '.', '•', '"'] # '.' '_' and '•' pourraît être enlever pas une fonction qui supprime les puces
-DROP_IF_SEQUENCE_IN_IT = ['http', '\t', ':p', '\n:', ':o', ':D', ':-', 'Oo', 'A/', 'A)', '.!', '.?', '?.', '!.', 'I)', '. . .', '2ème étape', '1ère étape', 'étape 1', ',\n\n', '$', '`', '*', '}', '§', '?', '&', '{', '[', '|', '_', '\\', ] # check regex for \n\n2 , '\n\n2'
-INDIVIDUALS_RECIPE_ID_TO_DROP = [55088, 14288, 168384, 382724, 383586, 11034, 24993, 323345, 28567, 165862, 25067, 94668, 48295, 52925] #  '$', '`', '*' added those to drop above to optimize model's speed
+DROP_IF_SEQUENCE_IN_IT = ['http', '\t', ':p', '\n:', ':o', ':D', ':-', 'Oo', 'A/', 'A)', '.!', '.?', '?.', '!.', 'I)', '. . .', '2ème étape', '1ère étape', 'étape 1', ',\n\n'] # check regex for \n\n2 , '\n\n2'
+INDIVIDUALS_RECIPE_ID_TO_DROP = [55088, 14288, 168384, 382724, 383586, 11034, 24993, 323345, 28567, 165862, 25067, 94668, 48295, 52925] #  '$', '`', '*' added those to drop above to optimize model's speed , '$', '`', '*', '}', '§', '?', '&', '{', '[', ']', '|', '_', '\\', '%', '^', '=', '@', '>', '²'
 
 
 REPLACE_IF_FIRST_CHAR = [' ', '\n']
