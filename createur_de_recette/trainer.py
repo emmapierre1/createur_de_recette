@@ -34,7 +34,7 @@ class Trainer:
         self.on_gcp = on_gcp
         self.dataset_train = None
         self.dataset_filtered = None
-    
+
     def train(self):
         """
         Creates and trains the model.
@@ -44,7 +44,7 @@ class Trainer:
         self.load_data()
         self.tokenize()
         self.get_model()
-    
+
     def test(self,
              try_letters=['🥕\n\n100 g de viande hachée\n200 g de tomates\n\n500 g de spaghettis\n 1 kg de piment\n\n📝\n\n', '🥕\n\nSel\nPoivre\n\n📝\n\n'],
              try_temperature=[1.0, 0.8, 0.4, 0.2]):
@@ -52,13 +52,13 @@ class Trainer:
         Creates a model from checkpoint files, tries it with different try_letters and try_temperature and displays the results
         Before calling this function, make sure the files data/tokenizer.pickle or data/train_data.csv and the checkpoints files are present.
         """
-        
+
         self.load_tokenizer()
         if(self.tokenizer is None):
             self.load_data()
             self.tokenize()
-        
-        
+
+
         simplified_batch_size = 1
         model_simplified = self.build_model(simplified_batch_size)
         checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
@@ -69,15 +69,15 @@ class Trainer:
             print("No checkpoint found. Checkpoint files are needed to test the model.")
             return
         model_simplified.build(tf.TensorShape([simplified_batch_size, None]))
-        
+
         self.generate_combinations(model_simplified, try_letters, try_temperature)
 
-        
+
     def load_data(self, nrows=None):
         print("Loading data")
         prefix = f"gs://{BUCKET_NAME}/" if self.on_gcp else ""
         self.dataset_filtered = pd.read_csv(prefix + "data/train_data.csv", header=None, nrows=nrows)[0]
-    
+
     def load_tokenizer(self):
         print("Load tokenizer")
         if self.tokenizer is None:
@@ -88,8 +88,8 @@ class Trainer:
                     self.vocabulary_size = len(self.tokenizer.word_counts) + 1
             except FileNotFoundError:
                 print("No tokenizer file found")
-        
-        
+
+
 
     def recipe_sequence_to_string(self, recipe_sequence):
         recipe_stringified = self.tokenizer.sequences_to_texts([recipe_sequence])[0]
@@ -118,7 +118,7 @@ class Trainer:
         ))
 
         model.add(tf.keras.layers.Dense(self.vocabulary_size))
-        
+
         return model
 
     def loss(self, labels, logits):
@@ -127,10 +127,10 @@ class Trainer:
             y_pred=logits,
             from_logits=True
         )
-        
+
         return entropy
-    
-    
+
+
     def tokenize(self):
         if self.dataset_filtered is None:
             print("Data not loaded. Call load_data() first")
@@ -143,12 +143,12 @@ class Trainer:
                 lower=False,
                 split=''
             )
-            
+
         self.tokenizer.fit_on_texts([STOP_SIGN])
         self.tokenizer.fit_on_texts(self.dataset_filtered)
         self.vocabulary_size = len(self.tokenizer.word_counts) + 1
         dataset_vectorized = self.tokenizer.texts_to_sequences(self.dataset_filtered)
-        
+
         dataset_vectorized_padded_without_stops = tf.keras.preprocessing.sequence.pad_sequences(
             dataset_vectorized,
             padding='post',
@@ -168,37 +168,37 @@ class Trainer:
             maxlen=MAX_RECIPE_LENGTH+1,
             value=self.tokenizer.texts_to_sequences([STOP_SIGN])[0]
         )
-        
+
         dataset = tf.data.Dataset.from_tensor_slices(dataset_vectorized_padded)
         dataset_targeted = dataset.map(self.split_input_target)
         self.dataset_train = dataset_targeted.shuffle(SHUFFLE_BUFFER_SIZE).batch(BATCH_SIZE, drop_remainder=True).repeat()
-        
+
         print("Saving tokenizer")
         with open(TOKENIZER_FILE, 'wb') as handle:
             pickle.dump(self.tokenizer, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        
-    
+
+
 
     def get_model(self):
         if self.dataset_train is None or self.tokenizer is None:
             print("Data not tokenized. Call tokenize() first")
         model = self.build_model(BATCH_SIZE)
-        
+
         adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-        
+
         model.compile(
             optimizer=adam_optimizer,
             loss=self.loss
         )
-        
+
         early_stopping_callback = tf.keras.callbacks.EarlyStopping(
             patience=5,
             monitor='loss',
             restore_best_weights=True,
             verbose=1
         )
-        
-        
+
+
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
         checkpoint_prefix = os.path.join(CHECKPOINT_DIR, 'ckpt_{epoch}')
@@ -206,14 +206,14 @@ class Trainer:
             filepath=checkpoint_prefix,
             save_weights_only=True
         )
-        
+
         checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
         if checkpoint:
             print("Restore from " + checkpoint)
             model.load_weights(checkpoint)
         else:
             print("No checkpoint found")
-        
+
         history = model.fit(
             x=self.dataset_train,
             epochs=EPOCHS,
@@ -224,12 +224,12 @@ class Trainer:
                 early_stopping_callback
             ]
         )
-        
+
         # Saving the trained model to file (to be able to re-use it later).
         model_name = 'recipe_generation_rnn_raw.h5'
         model.save(model_name, save_format='h5')
 
-    def generate_text(self, model, start_string, num_generate = 1000, temperature=1.0):
+    def generate_text(self, model, start_string, num_generate = 1000, temperature=0.4):
         # Evaluation step (generating text using the learned model)
         padded_start_string = start_string
 
@@ -256,7 +256,7 @@ class Trainer:
             # We pass the predicted character as the next input to the model
             # along with the previous hidden state.
             input_indices = tf.expand_dims([predicted_id], 0)
-            
+
             next_character = self.tokenizer.sequences_to_texts(input_indices.numpy())[0]
 
             text_generated.append(next_character)
@@ -283,8 +283,8 @@ class Trainer:
                 letter_sizes.append(len(generated_text))
             sizes.append(letter_sizes)
         print(sizes)
-        
-                
+
+
     def save_model(self, reg):
         """method that saves the model into a .joblib file and uploads it on Google Storage /models folder
         HINTS : use joblib library and google-cloud-storage"""
@@ -300,6 +300,33 @@ class Trainer:
         bucket = client.bucket(BUCKET_NAME)
         blob = bucket.blob(STORAGE_LOCATION + file_name)
         blob.upload_from_filename(file_name)
+
+
+def generate_recipe(self,ingredients):
+    """
+        Generate recipe from ingredients input.
+        """
+
+    self.load_tokenizer()
+    if (self.tokenizer is None):
+        self.load_data()
+        self.tokenize()
+
+    simplified_batch_size = 1
+    model_simplified = self.build_model(simplified_batch_size)
+    checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
+    if checkpoint:
+        print("Restore from " + checkpoint)
+        model_simplified.load_weights(checkpoint)
+    else:
+        print(
+            "No checkpoint found. Checkpoint files are needed to test the model."
+        )
+        return
+    model_simplified.build(tf.TensorShape([simplified_batch_size, None]))
+
+    return self.generate_text(model_simplified, ingredients)
+
 
 
 if __name__ == "__main__":

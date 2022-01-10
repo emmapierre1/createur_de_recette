@@ -1,18 +1,22 @@
 # ----------------------------------
 #          INSTALL & TEST
 # ----------------------------------
+
+# project id
+PROJECT_ID=project-createur-recette
+
+
+
+# bucket name
+BUCKET_NAME = bucket-projet-createur-de-recette
+
+
+
+
 install_requirements:
 	@pip install -r requirements.txt
 
-check_code:
-	@flake8 scripts/* createur_de_recette/*.py
 
-black:
-	@black scripts/* createur_de_recette/*.py
-
-test:
-	@coverage run -m pytest tests/*.py
-	@coverage report -m --omit="${VIRTUAL_ENV}/lib/python*"
 
 ftest:
 	@Write me
@@ -101,3 +105,7 @@ gcp_submit_training:
 		--region ${REGION} \
 		--scale-tier BASIC_GPU \
 		--stream-logs
+
+
+run_api:
+	uvicorn api.fast:app --reload  # load web server with code autoreload
