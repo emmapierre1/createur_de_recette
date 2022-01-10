@@ -291,7 +291,7 @@ class Trainer:
         file_name = f"model.jolib"
         joblib.dump(reg, file_name)
         print("saved model.joblib locally")
-        upload_model_to_gcp(file_name)
+        self.upload_model_to_gcp(file_name)
         print(f"uploaded model.joblib to gcp cloud storage under \n => {STORAGE_LOCATION}")
 
 
