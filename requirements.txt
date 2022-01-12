@@ -28,3 +28,9 @@ six>=1.14
 joblib
 memoized-property
 termcolor
+
+#website
+streamlit
+uvicorn
+fastapi
+#website image : PIL ( bug while building img
